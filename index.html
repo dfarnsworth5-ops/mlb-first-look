@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MLB DFS First Look — Data Shell</title>
+<style>
+  :root {
+    --navy: #1a2744;
+    --red: #c8102e;
+    --accent: #7fcf8f;
+    --bg: #fafafa;
+    --border: #e2e2e2;
+    --row-alt: #eef1f7;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: #1a1a1a;
+    overflow-x: hidden;
+  }
+  .shell { max-width: 1400px; margin: 0 auto; padding: 16px; overflow-x: hidden; }
+  .header {
+    background: var(--navy);
+    color: #fff;
+    padding: 14px 20px;
+    border-radius: 8px 8px 0 0;
+    border-bottom: 3px solid var(--accent);
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .last-updated { font-size: 11px; font-weight: 400; opacity: 0.75; letter-spacing: normal; }
+  .theme-toggle {
+    margin-left: auto;
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: #fff;
+    border-radius: 6px;
+    padding: 5px 9px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-top: none;
+    padding: 10px 14px;
+    flex-wrap: wrap;
+  }
+  .tabs { display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; min-width: 0; }
+  .tab-btn {
+    padding: 7px 16px;
+    border: 1px solid var(--border);
+    background: #fff;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+    cursor: pointer;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .tab-btn.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+  #search {
+    padding: 7px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    width: 220px;
+  }
+  .controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  #teamFilter {
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    background: #fff;
+    color: #333;
+  }
+  .col-toggle-wrap { position: relative; }
+  .col-toggle-btn {
+    padding: 7px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    background: #fff;
+    color: #333;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .col-panel {
+    display: none;
+    position: absolute;
+    top: 110%;
+    right: 0;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    padding: 10px 12px;
+    max-height: 320px;
+    overflow-y: auto;
+    z-index: 10;
+    min-width: 190px;
+  }
+  .col-panel.open { display: block; }
+  .col-panel label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #333;
+    padding: 3px 0;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .col-panel-actions { display: flex; gap: 8px; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .col-panel-actions button {
+    font-size: 11px;
+    border: 1px solid var(--border);
+    background: #f4f4f4;
+    border-radius: 4px;
+    padding: 3px 8px;
+    cursor: pointer;
+    color: #333;
+  }
+  .table-wrap {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    overflow: auto;
+    max-height: 620px;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  thead th {
+    position: sticky;
+    top: 0;
+    background: var(--navy);
+    z-index: 2;
+    padding: 8px 8px;
+    text-align: center;
+    border-bottom: 3px solid var(--accent);
+    cursor: pointer;
+    user-select: none;
+    font-weight: 700;
+    color: #fff;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.4px;
+  }
+  thead th:first-child { text-align: left; position: sticky; left: 0; z-index: 3; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+  thead th .arrow { font-size: 10px; color: var(--red); margin-left: 3px; }
+  tbody td { padding: 9px 10px; text-align: center; border-bottom: 1px solid var(--border); transition: background-color 0.12s ease; }
+  tbody tr { background: #fff; }
+  tbody td:first-child { text-align: left; font-weight: 600; position: sticky; left: 0; background: inherit; z-index: 1; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+  tbody tr:nth-child(even) td:first-child { background: var(--row-alt); }
+  tbody tr:nth-child(even) { background: var(--row-alt); }
+  tbody tr:hover td { filter: brightness(0.96); }
+  .note { font-size: 12px; color: #777; margin-top: 8px; }
+  .glossary-wrap {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    padding: 20px 24px;
+    max-height: 620px;
+    overflow: auto;
+  }
+  .glossary-section { margin-bottom: 22px; }
+  .glossary-section:last-child { margin-bottom: 0; }
+  .glossary-section h3 {
+    margin: 0 0 10px;
+    font-size: 14px;
+    color: var(--navy);
+    border-bottom: 2px solid var(--red);
+    padding-bottom: 4px;
+    display: inline-block;
+  }
+  .glossary-section dl { margin: 0; display: grid; grid-template-columns: 180px 1fr; row-gap: 8px; column-gap: 16px; }
+  .glossary-section dt { font-weight: 700; font-size: 13px; color: #1a1a1a; }
+  .glossary-section dd { margin: 0; font-size: 13px; color: #444; line-height: 1.4; }
+
+  /* ---------- Dark mode ---------- */
+  body.dark { background: #10141f; color: #e4e6ec; }
+  body.dark .toolbar, body.dark .table-wrap, body.dark .glossary-wrap,
+  body.dark .tab-btn, body.dark #search, body.dark #teamFilter,
+  body.dark .col-toggle-btn, body.dark .col-panel {
+    background: #1a2030;
+    border-color: #2c3448;
+    color: #e4e6ec;
+  }
+  body.dark .tab-btn.active { background: var(--navy); color: #fff; }
+  body.dark tbody tr { background: #1a2030; }
+  body.dark tbody tr:nth-child(even), body.dark tbody tr:nth-child(even) td:first-child { background: #212a3d; }
+  body.dark tbody td { border-bottom-color: #2c3448; color: #e4e6ec; }
+  body.dark tbody tr:hover td { filter: brightness(1.15); }
+  body.dark .col-panel label { color: #e4e6ec; }
+  body.dark .col-panel-actions button { background: #2c3448; border-color: #3a4460; color: #e4e6ec; }
+  body.dark .glossary-section dt { color: #e4e6ec; }
+  body.dark .glossary-section dd { color: #b6bcca; }
+  body.dark .note { color: #8a90a0; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <div class="header">
+    <span>⚾ MLB DFS FIRST LOOK</span>
+    <span id="lastUpdated" class="last-updated"></span>
+    <button id="themeToggle" class="theme-toggle" title="Toggle dark mode">🌙</button>
+  </div>
+  <div class="toolbar">
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="odds">Odds &amp; Schedule</button>
+      <button class="tab-btn" data-tab="pitchers">Pitcher Breakdown</button>
+      <button class="tab-btn" data-tab="offense">Offense Breakdown</button>
+      <button class="tab-btn" data-tab="hitters">Hitter Breakdown</button>
+      <button class="tab-btn" data-tab="glossary">Glossary</button>
+    </div>
+    <input id="search" type="text" placeholder="Search name or team...">
+    <div class="controls" id="controls">
+      <select id="teamFilter"><option value="">All Teams</option></select>
+      <div class="col-toggle-wrap">
+        <button class="col-toggle-btn" id="colToggleBtn">Columns ▾</button>
+        <div class="col-panel" id="colPanel">
+          <div class="col-panel-actions">
+            <button id="colShowAll">Show All</button>
+            <button id="colHideAll">Hide Most</button>
+          </div>
+          <div id="colCheckboxes"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="table-wrap" id="tableWrap">
+    <table id="dataTable">
+      <thead><tr id="headRow"></tr></thead>
+      <tbody id="bodyRows"></tbody>
+    </table>
+  </div>
+  <div class="glossary-wrap" id="glossaryWrap" style="display:none;">
+    <div class="glossary-section">
+      <h3>General</h3>
+      <dl>
+        <dt>DK / FD</dt><dd>DraftKings / FanDuel salary for that game.</dd>
+        <dt>Line</dt><dd>Moneyline odds for that team to win the game.</dd>
+        <dt>Time (ET)</dt><dd>Scheduled first pitch, Eastern time.</dd>
+        <dt>LHP / RHP</dt><dd>Left-handed / right-handed pitcher.</dd>
+        <dt>LH / RH / SH</dt><dd>Batter hits left-handed / right-handed / switch-hitter.</dd>
+      </dl>
+    </div>
+    <div class="glossary-section">
+      <h3>Odds &amp; Schedule</h3>
+      <dl>
+        <dt>A-Total / H-Total</dt><dd>Implied run total for the away/home team, derived from the game total and moneyline.</dd>
+        <dt>G-Total</dt><dd>The full game's projected total runs (over/under).</dd>
+      </dl>
+    </div>
+    <div class="glossary-section">
+      <h3>Pitcher Breakdown</h3>
+      <dl>
+        <dt>OTOT</dt><dd>The opposing team's implied run total. A higher number means a tougher matchup for the pitcher.</dd>
+        <dt>xwOBA</dt><dd>Expected weighted on-base average allowed, based on the quality of contact given up rather than actual results.</dd>
+        <dt>xERA</dt><dd>Expected ERA based on underlying performance (quality of contact, walks, strikeouts) rather than runs actually allowed.</dd>
+        <dt>SIERA</dt><dd>Skill-Interactive ERA — a defense-independent ERA estimator built from strikeout, walk, and ground-ball rates.</dd>
+        <dt>ERA</dt><dd>Earned run average.</dd>
+        <dt>K%</dt><dd>Percentage of batters faced who struck out.</dd>
+        <dt>BB%</dt><dd>Percentage of batters faced who walked.</dd>
+        <dt>SS%</dt><dd>Swinging-strike rate — the percentage of pitches that generated a swing and miss.</dd>
+        <dt>GB%</dt><dd>Ground-ball rate.</dd>
+        <dt>HC%</dt><dd>Hard-contact rate — the percentage of batted balls hit 95+ mph.</dd>
+        <dt>Pitch Ct</dt><dd>Projected pitch count for the outing. Pitchers projected under 60 pitches (openers, bulk-relief "starters") don't receive an Edge or Value score — their rate stats can look strong over a tiny workload without translating into real DFS value.</dd>
+        <dt>Edge</dt><dd>A single 0-100 summary score, weighted from OTOT (30%), xwOBA allowed (20%), xERA (15%), SIERA (15%), K% (15%), and BB% (5%) — a quick "how good is this spot overall" read, without needing to scan every individual column.</dd>
+        <dt>Value</dt><dd>A 1.0-10.0 relative score showing how much Edge a player offers per dollar of DraftKings salary, ranked against the rest of the slate — a 9-10 means one of the day's best bargains, regardless of raw price. Built from Edge divided by salary, but shown on this bounded scale instead of the raw ratio so it reads consistently from slate to slate.</dd>
+      </dl>
+    </div>
+    <div class="glossary-section">
+      <h3>Offense Breakdown</h3>
+      <dl>
+        <dt>Total</dt><dd>The team's implied run total for the game.</dd>
+        <dt>TvsLHP / TvsRHP</dt><dd>The team's season-long wOBA against left-handed / right-handed pitching.</dd>
+        <dt>PvsLHB / PvsRHB</dt><dd>The opposing starting pitcher's wOBA allowed against left-handed / right-handed batters this season.</dd>
+      </dl>
+    </div>
+    <div class="glossary-section">
+      <h3>Hitter Breakdown</h3>
+      <dl>
+        <dt>Edge</dt><dd>A single 0-100 summary score, weighted from xwOBA (25%), xISO (25%), Platoon Matchup (20%), Total (12%), xOBP (10%), wOBA (5%), and ISO (3%). Platoon Matchup automatically compares each batter's own handedness against the opposing pitcher's actual vL/vR splits — including switch-hitters, who are matched against whichever side they'd actually bat from.</dd>
+        <dt>Value</dt><dd>A 1.0-10.0 relative score showing how much Edge a player offers per dollar of DraftKings salary, ranked against the rest of the slate — a 9-10 means one of the day's best bargains, regardless of raw price. Built from Edge divided by salary, but shown on this bounded scale instead of the raw ratio so it reads consistently from slate to slate.</dd>
+        <dt>Order</dt><dd>Projected spot in the starting lineup.</dd>
+        <dt>wOBA</dt><dd>Weighted on-base average — a single comprehensive rate stat for overall offensive value.</dd>
+        <dt>ISO</dt><dd>Isolated power — extra-base hits per at-bat, a pure power measure.</dd>
+        <dt>xOBP</dt><dd>Expected on-base percentage, based on quality of contact and plate discipline.</dd>
+        <dt>xwOBA / xISO</dt><dd>Expected wOBA / ISO based on quality of contact rather than actual outcomes.</dd>
+        <dt>ExitV</dt><dd>Average exit velocity, in mph.</dd>
+        <dt>HC%</dt><dd>Hard-contact rate — percentage of batted balls hit 95+ mph.</dd>
+        <dt>BAR%</dt><dd>Barrel rate — the percentage of batted balls that are well-struck enough (combining exit velocity and launch angle) to be classified as a "barrel."</dd>
+        <dt>BB%</dt><dd>Walk rate.</dd>
+        <dt>K%</dt><dd>Strikeout rate.</dd>
+        <dt>xwOBAvL / xISOvL / K%vL</dt><dd>The opposing pitcher's expected wOBA allowed, expected ISO allowed, and strikeout rate against left-handed batters.</dd>
+        <dt>xwOBAvR / xISOvR / K%vR</dt><dd>Same as above, against right-handed batters.</dd>
+      </dl>
+    </div>
+    <div class="glossary-section">
+      <h3>Color Coding</h3>
+      <p style="margin:0 0 12px; font-size:13px; color:#555;">Every colored stat is ranked against the rest of that day's slate and shaded on a continuous scale — deep blue for the best matchups/performances, deep orange/red for the worst, with lighter shades in between. The scale is calculated automatically from that day's data, so it always reflects the current slate rather than a fixed cutoff.</p>
+      <div style="height:32px; border-radius:6px; background:linear-gradient(to right, #B2182B 0%, #EF8A62 16.667%, #FDDBC7 33.333%, #F7F7F7 50%, #D1E5F0 66.667%, #67A9CF 83.333%, #2166AC 100%); border:0.5px solid #ccc; max-width:420px;"></div>
+      <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:11px; color:#777; max-width:420px;">
+        <span>Worst</span>
+        <span>Average</span>
+        <span>Elite</span>
+      </div>
+      <p style="margin:12px 0 0; font-size:12px; color:#777;">Note: for a few stats (like strikeout rate), a lower raw number is actually the better outcome — those are still colored so blue always means "good for the player/team" and red always means "bad," even though the direction of the underlying number is flipped.</p>
+    </div>
+  </div>
+  <p class="note">Data loads from <code>data.json</code> in this same folder. Update that file to refresh the table — no HTML edits needed.</p>
+</div>
+
+<script>
+const COLUMNS = {
+  odds: [
+    { key: "awayTeam", label: "Away Team" },
+    { key: "awayPitcher", label: "Pitcher Name", link: true },
+    { key: "awayHand", label: "Handed" },
+    { key: "awayLine", label: "Line" },
+    { key: "aTotal", label: "A-Total", pct: "aTotal_pct", auto: true, dec: 2 },
+    { key: "homeTeam", label: "Home Team", bold: true },
+    { key: "homePitcher", label: "Pitcher Name", link: true },
+    { key: "homeHand", label: "Handed" },
+    { key: "homeLine", label: "Line" },
+    { key: "hTotal", label: "H-Total", pct: "hTotal_pct", auto: true, dec: 2 },
+    { key: "gTotal", label: "G-Total", pct: "gTotal_pct", auto: true, dec: 1 },
+    { key: "time", label: "Time (ET)" }
+  ],
+  pitchers: [
+    { key: "name", label: "Pitcher — Name", link: true },
+    { key: "team", label: "Team" },
+    { key: "hand", label: "Hand" },
+    { key: "signal", label: "Edge", pct: "signal_pct", dec: 0 },
+    { key: "value", label: "Value", pct: "value_pct", dec: 1 },
+    { key: "opponent", label: "Opponent" },
+    { key: "line", label: "Line" },
+    { key: "otot", label: "OTOT", pct: "otot_pct", auto: true, invert: true, dec: 2 },
+    { key: "dk", label: "DK", fmt: "money" },
+    { key: "fd", label: "FD", fmt: "money" },
+    { key: "starts", label: "Starts" },
+    { key: "pitchCount", label: "Pitch Ct" },
+    { key: "xwoba", label: "xwOBA", pct: "xwoba_pct", auto: true, invert: true, dec: 3 },
+    { key: "xera", label: "xERA", pct: "xera_pct", auto: true, invert: true, dec: 2 },
+    { key: "siera", label: "SIERA", pct: "siera_pct", auto: true, invert: true, dec: 2 },
+    { key: "era", label: "ERA", pct: "era_pct", auto: true, invert: true, dec: 2 },
+    { key: "k", label: "K%", fmt: "pct", pct: "k_pct", auto: true },
+    { key: "bb", label: "BB%", fmt: "pct", pct: "bb_pct", auto: true, invert: true },
+    { key: "ss", label: "SS%", fmt: "pct", pct: "ss_pct", auto: true },
+    { key: "gb", label: "GB%", fmt: "pct", pct: "gb_pct", auto: true },
+    { key: "hc", label: "HC%", fmt: "pct", pct: "hc_pct", auto: true, invert: true },
+    { key: "time", label: "Time (ET)" }
+  ],
+  offense: [
+    { key: "offense", label: "Offense" },
+    { key: "total", label: "Total", pct: "total_pct", auto: true, dec: 2 },
+    { key: "tvsLHP", label: "TvsLHP", pct: "tvsLHP_pct", auto: true, dec: 3 },
+    { key: "tvsRHP", label: "TvsRHP", pct: "tvsRHP_pct", auto: true, dec: 3 },
+    { key: "opponent", label: "Opponent" },
+    { key: "oppPitcher", label: "Opp Pitcher", link: true },
+    { key: "hand", label: "Handed" },
+    { key: "pvsLHB", label: "PvsLHB", pct: "pvsLHB_pct", auto: true, invert: true, dec: 3 },
+    { key: "pvsRHB", label: "PvsRHB", pct: "pvsRHB_pct", auto: true, invert: true, dec: 3 },
+    { key: "time", label: "Time (ET)" }
+  ],
+  hitters: [
+    { key: "name", label: "Batter — Name", link: true },
+    { key: "team", label: "Team" },
+    { key: "hand", label: "Handed" },
+    { key: "signal", label: "Edge", pct: "signal_pct", dec: 0 },
+    { key: "value", label: "Value", pct: "value_pct", dec: 1 },
+    { key: "order", label: "Order" },
+    { key: "total", label: "Total", pct: "total_pct", auto: true, dec: 2 },
+    { key: "woba", label: "wOBA", pct: "woba_pct", auto: true, dec: 3 },
+    { key: "iso", label: "ISO", pct: "iso_pct", auto: true, dec: 3 },
+    { key: "xobp", label: "xOBP", pct: "xobp_pct", auto: true, dec: 3 },
+    { key: "xwoba", label: "xwOBA", pct: "xwoba_pct", auto: true, dec: 3 },
+    { key: "xiso", label: "xISO", pct: "xiso_pct", auto: true, dec: 3 },
+    { key: "exitv", label: "ExitV", pct: "exitv_pct", auto: true, dec: 1 },
+    { key: "hc", label: "HC%", fmt: "pct", pct: "hc_pct", auto: true },
+    { key: "bar", label: "BAR%", fmt: "pct", pct: "bar_pct", auto: true },
+    { key: "bb", label: "BB%", fmt: "pct", pct: "bb_pct", auto: true },
+    { key: "k", label: "K%", fmt: "pct", pct: "k_pct", auto: true, invert: true },
+    { key: "dk", label: "DK", fmt: "money" },
+    { key: "dkPos", label: "Pos" },
+    { key: "fd", label: "FD", fmt: "money" },
+    { key: "fdPos", label: "Pos" },
+    { key: "matchup", label: "Matchup" },
+    { key: "oppPitcher", label: "Opposing Pitcher", link: true },
+    { key: "oppHand", label: "HAND" },
+    { key: "xwobavL", label: "xwOBAvL", pct: "xwobavL_pct", auto: true, dec: 3 },
+    { key: "xisovL", label: "xISOvL", pct: "xisovL_pct", auto: true, dec: 3 },
+    { key: "kvL", label: "K%vL", fmt: "pct", pct: "kvL_pct", auto: true, invert: true },
+    { key: "xwobavR", label: "xwOBAvR", pct: "xwobavR_pct", auto: true, dec: 3 },
+    { key: "xisovR", label: "xISOvR", pct: "xisovR_pct", auto: true, dec: 3 },
+    { key: "kvR", label: "K%vR", fmt: "pct", pct: "kvR_pct", auto: true, invert: true },
+    { key: "time", label: "Time (ET)" }
+  ]
+};
+
+// Auto-computes a percentile for any column flagged { auto: true } when the
+// data file itself doesn't supply one. Same method as the spreadsheet:
+// sort ascending, percentile = rank / count.
+// Ranks ascending by raw value. For normal stats (higher = better), the
+// largest raw value gets percentile 1. For "invert" stats (lower = better,
+// e.g. ERA), the smallest raw value gets percentile 1 instead.
+// Ranks ascending by raw value. For normal stats (higher = better), the
+// largest raw value gets percentile 1. For "invert" stats (lower = better,
+// e.g. ERA), the smallest raw value gets percentile 1 instead.
+// Rows that share an identical raw value are always assigned the exact
+// same percentile (tied), so duplicate numbers never render differently.
+function computeAutoPercentiles(rows, cols) {
+  cols.filter(c => c.auto).forEach(col => {
+    const withIdx = rows.map((r, i) => [i, r[col.key]]).filter(([, v]) => v !== null && v !== undefined);
+    const n = withIdx.length;
+    if (n === 0) return;
+    withIdx.sort((a, b) => a[1] - b[1]);
+    let i = 0;
+    while (i < n) {
+      let j = i;
+      while (j + 1 < n && withIdx[j + 1][1] === withIdx[i][1]) j++;
+      const avgPosition = (i + j) / 2; // 0-indexed average rank among ties
+      const p = n > 1
+        ? (col.invert ? (n - 1 - avgPosition) / (n - 1) : avgPosition / (n - 1))
+        : 0.5;
+      for (let k = i; k <= j; k++) {
+        rows[withIdx[k][0]][col.pct] = p;
+      }
+      i = j + 1;
+    }
+  });
+}
+
+// Matches each hitter's own batting hand against the opposing pitcher's
+// vL/vR splits, so the platoon matchup is handedness-correct — including
+// switch-hitters, who always bat opposite the pitcher's throwing hand.
+function computePlatoonPct(rows) {
+  rows.forEach(row => {
+    const bats = (row.hand || "").toUpperCase();
+    const oppHand = (row.oppHand || "").toUpperCase();
+    let facesAsLefty;
+    if (bats === "LH") facesAsLefty = true;
+    else if (bats === "RH") facesAsLefty = false;
+    else if (bats === "SH") {
+      if (oppHand.indexOf("LHP") !== -1) facesAsLefty = false;
+      else if (oppHand.indexOf("RHP") !== -1) facesAsLefty = true;
+      else facesAsLefty = null;
+    } else {
+      facesAsLefty = null;
+    }
+
+    let xwobaM, xisoM, kM;
+    if (facesAsLefty === true) {
+      xwobaM = row.xwobavL_pct; xisoM = row.xisovL_pct; kM = row.kvL_pct;
+    } else if (facesAsLefty === false) {
+      xwobaM = row.xwobavR_pct; xisoM = row.xisovR_pct; kM = row.kvR_pct;
+    }
+
+    const parts = [xwobaM, xisoM, kM].filter(v => v !== null && v !== undefined);
+    row.platoon_pct = parts.length ? parts.reduce((a, b) => a + b, 0) / parts.length : null;
+  });
+}
+
+// Computes a single 0-100 "Edge" score per row, as a weighted average of
+// a curated subset of that row's already-computed percentiles — chosen to
+// each represent a distinct signal rather than overlapping/redundant stats.
+const PITCHER_SIGNAL_WEIGHTS = { otot_pct: 0.30, xwoba_pct: 0.20, xera_pct: 0.15, siera_pct: 0.15, k_pct: 0.15, bb_pct: 0.05 };
+const HITTER_SIGNAL_WEIGHTS  = { xwoba_pct: 0.25, xiso_pct: 0.25, platoon_pct: 0.20, total_pct: 0.12, xobp_pct: 0.10, woba_pct: 0.05, iso_pct: 0.03 };
+
+function computeSignalScores(rows, weights) {
+  rows.forEach(row => {
+    let weightedSum = 0, totalWeight = 0;
+    for (const pctField in weights) {
+      const v = row[pctField];
+      if (v !== null && v !== undefined) {
+        weightedSum += v * weights[pctField];
+        totalWeight += weights[pctField];
+      }
+    }
+    if (totalWeight > 0) {
+      row.signal_pct = weightedSum / totalWeight;
+      row.signal = Math.round(row.signal_pct * 100);
+    } else {
+      row.signal_pct = null;
+      row.signal = null;
+    }
+  });
+}
+
+// Computes "Value" as a 1.0-10.0 relative score (not a raw dollar ratio),
+// so it reads intuitively and stays consistent day to day regardless of
+// how salaries happen to spread out on a given slate. Under the hood it's
+// still built from Edge-per-$1,000, tie-safe ranked, then mapped onto the
+// friendlier 1-10 scale.
+function computeValueScores(rows) {
+  const raw = rows.map(row => (row.signal !== null && row.signal !== undefined && row.dk)
+    ? (row.signal / row.dk * 1000) : null);
+  const withIdx = raw.map((v, i) => [i, v]).filter(([, v]) => v !== null && v !== undefined);
+  const n = withIdx.length;
+  rows.forEach(row => { row.value = null; row.value_pct = null; });
+  if (n === 0) return;
+  withIdx.sort((a, b) => a[1] - b[1]);
+  let i = 0;
+  while (i < n) {
+    let j = i;
+    while (j + 1 < n && withIdx[j + 1][1] === withIdx[i][1]) j++;
+    const avgPosition = (i + j) / 2;
+    const p = n > 1 ? avgPosition / (n - 1) : 0.5;
+    for (let k = i; k <= j; k++) {
+      const idx = withIdx[k][0];
+      rows[idx].value_pct = p;
+      rows[idx].value = Math.round((1 + p * 9) * 10) / 10;
+    }
+    i = j + 1;
+  }
+}
+
+let DATA = { odds: [], pitchers: [], offense: [], hitters: [] };
+let PLAYER_URLS = {};
+
+// Pitchers projected for a short/bulk-role outing (e.g. openers, bulk relief
+// "starters") get excluded from Edge/Value entirely — their rate stats can
+// look elite over a tiny workload without translating to real DFS value.
+// Missing pitch-count data does NOT disqualify a pitcher, only a confirmed
+// low number does, so this fails safe if the field is ever left blank.
+const PITCHER_MIN_PITCH_COUNT = 60;
+function applyPitchCountQualifier(rows) {
+  rows.forEach(row => {
+    if (row.pitchCount !== null && row.pitchCount !== undefined && row.pitchCount < PITCHER_MIN_PITCH_COUNT) {
+      row.signal = null;
+      row.signal_pct = null;
+    }
+  });
+}
+let activeTab = "odds";
+let sortKey = null;
+let sortDir = 1;
+let teamFilter = "";
+
+// Which field(s) represent "team" for each tab, used by the team filter dropdown.
+const TEAM_FIELDS = {
+  odds: ["awayTeam", "homeTeam"],
+  pitchers: ["team"],
+  offense: ["offense"],
+  hitters: ["team"]
+};
+
+// Tracks which columns are hidden per tab, so hiding a column on one tab
+// doesn't affect another tab's columns.
+const hiddenCols = { odds: new Set(), pitchers: new Set(), offense: new Set(), hitters: new Set() };
+
+// 7-stop blue/orange gradient — same math as the spreadsheet formulas
+const STOPS = [
+  [0,     178, 24,  43],
+  [1/6,   239, 138, 98],
+  [2/6,   253, 219, 199],
+  [3/6,   247, 247, 247],
+  [4/6,   209, 229, 240],
+  [5/6,   103, 169, 207],
+  [1,     33,  102, 172]
+];
+function gradientColor(p) {
+  if (p == null || isNaN(p)) return null;
+  p = Math.max(0, Math.min(1, p));
+  for (let i = 0; i < STOPS.length - 1; i++) {
+    const [p0, r0, g0, b0] = STOPS[i];
+    const [p1, r1, g1, b1] = STOPS[i + 1];
+    if (p >= p0 && p <= p1) {
+      const t = (p1 === p0) ? 0 : (p - p0) / (p1 - p0);
+      const r = Math.round(r0 + t * (r1 - r0));
+      const g = Math.round(g0 + t * (g1 - g0));
+      const b = Math.round(b0 + t * (b1 - b0));
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      return { bg: `rgb(${r},${g},${b})`, text: lum > 150 ? "#000" : "#fff" };
+    }
+  }
+  return null;
+}
+
+// Normalizes a name for matching against the players.json master lookup
+// (strips spaces/punctuation, lowercases) so small formatting differences
+// between your daily data and the master list don't cause a miss.
+function normName(s) {
+  return (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function fmt(val, type, dec) {
+  if (val === null || val === undefined || val === "") return "—";
+  if (type === "money") return "$" + Number(val).toLocaleString();
+  if (type === "pct") return val + "%";
+  if (dec !== undefined && dec !== null) return Number(val).toFixed(dec);
+  return val;
+}
+
+function render() {
+  const cols = COLUMNS[activeTab].filter(c => !hiddenCols[activeTab].has(c.key));
+  const headRow = document.getElementById("headRow");
+  headRow.innerHTML = "";
+  cols.forEach(col => {
+    const th = document.createElement("th");
+    th.textContent = col.label;
+    if (sortKey === col.key) {
+      const arrow = document.createElement("span");
+      arrow.className = "arrow";
+      arrow.textContent = sortDir === 1 ? "▲" : "▼";
+      th.appendChild(arrow);
+    }
+    th.addEventListener("click", () => {
+      if (sortKey === col.key) sortDir *= -1; else { sortKey = col.key; sortDir = 1; }
+      render();
+    });
+    headRow.appendChild(th);
+  });
+
+  let rows = DATA[activeTab].slice();
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  if (q) rows = rows.filter(r => (r.name || "").toLowerCase().includes(q) || (r.team || "").toLowerCase().includes(q));
+  if (teamFilter) {
+    const fields = TEAM_FIELDS[activeTab] || [];
+    rows = rows.filter(r => fields.some(f => r[f] === teamFilter));
+  }
+
+  if (sortKey) {
+    rows.sort((a, b) => {
+      let av = a[sortKey], bv = b[sortKey];
+      if (av === null || av === undefined) av = -Infinity;
+      if (bv === null || bv === undefined) bv = -Infinity;
+      if (typeof av === "string") return av.localeCompare(bv) * sortDir;
+      return (av - bv) * sortDir;
+    });
+  }
+
+  const tbody = document.getElementById("bodyRows");
+  tbody.innerHTML = "";
+  rows.forEach(row => {
+    const tr = document.createElement("tr");
+    cols.forEach(col => {
+      const td = document.createElement("td");
+      td.setAttribute("data-label", col.label);
+      if (col.link) {
+        // row.url (if present) is only valid for the row's own identity column;
+        // every other linked column (e.g. "Opposing Pitcher") must look itself up.
+        const url = (col.key === "name" && row.url) ? row.url : PLAYER_URLS[normName(row[col.key])];
+        if (url) {
+          const a = document.createElement("a");
+          a.href = url;
+          a.target = "_blank";
+          a.rel = "noopener";
+          a.textContent = fmt(row[col.key], col.fmt, col.dec);
+          a.style.color = "inherit";
+          a.style.textDecoration = "none";
+          a.addEventListener("mouseenter", () => a.style.textDecoration = "underline");
+          a.addEventListener("mouseleave", () => a.style.textDecoration = "none");
+          td.appendChild(a);
+        } else {
+          td.textContent = fmt(row[col.key], col.fmt, col.dec);
+        }
+      } else {
+        td.textContent = fmt(row[col.key], col.fmt, col.dec);
+      }
+      if (cols.indexOf(col) === 0) td.title = fmt(row[col.key], col.fmt, col.dec);
+      if (col.bold) td.style.fontWeight = "700";
+      if (col.pct && row[col.pct] != null) {
+        const c = gradientColor(row[col.pct]);
+        if (c) { td.style.background = c.bg; td.style.color = c.text; }
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+// Rebuilds the "All Teams" dropdown based on whatever team-ish field(s)
+// exist for the currently active tab.
+function populateTeamFilter() {
+  const select = document.getElementById("teamFilter");
+  const fields = TEAM_FIELDS[activeTab] || [];
+  const teams = new Set();
+  (DATA[activeTab] || []).forEach(r => fields.forEach(f => { if (r[f]) teams.add(r[f]); }));
+  const sorted = Array.from(teams).sort();
+  select.innerHTML = '<option value="">All Teams</option>' + sorted.map(t => `<option value="${t}">${t}</option>`).join("");
+  select.value = "";
+}
+
+// Rebuilds the column show/hide checkbox list for the currently active tab.
+function populateColumnPanel() {
+  const container = document.getElementById("colCheckboxes");
+  container.innerHTML = "";
+  COLUMNS[activeTab].forEach(col => {
+    const label = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = !hiddenCols[activeTab].has(col.key);
+    cb.addEventListener("change", () => {
+      if (cb.checked) hiddenCols[activeTab].delete(col.key);
+      else hiddenCols[activeTab].add(col.key);
+      render();
+    });
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(col.label));
+    container.appendChild(label);
+  });
+}
+
+// ---------- Dark mode ----------
+function applyTheme(dark) {
+  document.body.classList.toggle("dark", dark);
+  document.getElementById("themeToggle").textContent = dark ? "☀️" : "🌙";
+}
+const savedTheme = localStorage.getItem("firstlook-theme");
+applyTheme(savedTheme === "dark");
+document.getElementById("themeToggle").addEventListener("click", () => {
+  const isDark = !document.body.classList.contains("dark");
+  applyTheme(isDark);
+  localStorage.setItem("firstlook-theme", isDark ? "dark" : "light");
+});
+
+// ---------- Last updated ----------
+function showLastUpdated(iso) {
+  const el = document.getElementById("lastUpdated");
+  if (!iso) { el.textContent = ""; return; }
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) { el.textContent = ""; return; }
+  const formatted = d.toLocaleString("en-US", {
+    month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short"
+  });
+  el.textContent = "Data as of " + formatted;
+}
+
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    activeTab = btn.dataset.tab;
+    sortKey = null;
+    teamFilter = "";
+    document.getElementById("colPanel").classList.remove("open");
+
+    const isGlossary = activeTab === "glossary";
+    document.getElementById("tableWrap").style.display = isGlossary ? "none" : "block";
+    document.getElementById("glossaryWrap").style.display = isGlossary ? "block" : "none";
+    document.getElementById("search").style.display = isGlossary ? "none" : "inline-block";
+    document.getElementById("controls").style.display = isGlossary ? "none" : "flex";
+
+    if (!isGlossary) {
+      populateTeamFilter();
+      populateColumnPanel();
+      render();
+    }
+  });
+});
+document.getElementById("search").addEventListener("input", render);
+document.getElementById("teamFilter").addEventListener("change", (e) => { teamFilter = e.target.value; render(); });
+
+document.getElementById("colToggleBtn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  document.getElementById("colPanel").classList.toggle("open");
+});
+document.addEventListener("click", (e) => {
+  const panel = document.getElementById("colPanel");
+  const btn = document.getElementById("colToggleBtn");
+  if (panel.classList.contains("open") && !panel.contains(e.target) && e.target !== btn) {
+    panel.classList.remove("open");
+  }
+});
+document.getElementById("colShowAll").addEventListener("click", () => {
+  hiddenCols[activeTab].clear();
+  populateColumnPanel();
+  render();
+});
+document.getElementById("colHideAll").addEventListener("click", () => {
+  // Keep the first (name-ish) column visible always, hide the rest
+  COLUMNS[activeTab].forEach((c, i) => { if (i > 0) hiddenCols[activeTab].add(c.key); });
+  populateColumnPanel();
+  render();
+});
+
+Promise.all([
+  fetch("data.json").then(r => r.json()),
+  fetch("players.json").then(r => r.json()).catch(() => ({}))
+])
+  .then(([json, players]) => {
+    DATA = json;
+    PLAYER_URLS = players;
+    showLastUpdated(DATA.lastUpdated);
+    computeAutoPercentiles(DATA.odds, COLUMNS.odds);
+    computeAutoPercentiles(DATA.pitchers, COLUMNS.pitchers);
+    computeSignalScores(DATA.pitchers, PITCHER_SIGNAL_WEIGHTS);
+    applyPitchCountQualifier(DATA.pitchers);
+    computeValueScores(DATA.pitchers);
+    computeAutoPercentiles(DATA.offense, COLUMNS.offense);
+    computeAutoPercentiles(DATA.hitters, COLUMNS.hitters);
+    computePlatoonPct(DATA.hitters);
+    computeSignalScores(DATA.hitters, HITTER_SIGNAL_WEIGHTS);
+    computeValueScores(DATA.hitters);
+    populateTeamFilter();
+    populateColumnPanel();
+    render();
+  })
+  .catch(err => {
+    document.getElementById("bodyRows").innerHTML =
+      '<tr><td colspan="20" style="padding:20px;text-align:center;color:#999;">Could not load data.json — if opening this file directly (file://), it needs to be served over http(s), e.g. via GitHub Pages.</td></tr>';
+    console.error(err);
+  });
+</script>
+
+</body>
+</html>
